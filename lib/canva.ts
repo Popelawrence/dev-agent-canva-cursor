@@ -19,6 +19,7 @@ const AUTHORIZE_URL = "https://www.canva.com/api/oauth/authorize";
 const TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
 const ASSET_UPLOADS_URL = "https://api.canva.com/rest/v1/asset-uploads";
 const DESIGNS_URL = "https://api.canva.com/rest/v1/designs";
+const URL_IMPORTS_URL = "https://api.canva.com/rest/v1/url-imports";
 
 export const CANVA_SCOPES =
   "asset:read asset:write design:content:write design:meta:read";
@@ -268,6 +269,68 @@ export async function createDesignFromAsset(
   const { design } = (await res.json()) as {
     design: { id: string; urls: { edit_url: string; view_url: string } };
   };
+  return {
+    designId: design.id,
+    editUrl: design.urls.edit_url,
+    viewUrl: design.urls.view_url,
+  };
+}
+
+interface UrlImportJob {
+  id: string;
+  status: "in_progress" | "success" | "failed";
+  result?: {
+    designs: { id: string; urls: { edit_url: string; view_url: string } }[];
+  };
+  error?: { code: string; message: string };
+}
+
+/**
+ * Import an external template file (PDF, PPTX, DOCX, PNG, JPG, etc.) from a
+ * public URL into the user's Canva account as a new, editable design. This is
+ * how a user brings in a template they own (e.g. an Etsy digital download) to
+ * then modify and add their own photo.
+ */
+export async function importDesignFromUrl(
+  accessToken: string,
+  params: { url: string; title: string; mimeType?: string },
+): Promise<CanvaDesign> {
+  const res = await fetch(URL_IMPORTS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title: params.title.slice(0, 255),
+      url: params.url,
+      ...(params.mimeType ? { mime_type: params.mimeType } : {}),
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`URL import failed (${res.status}): ${await res.text()}`);
+  }
+
+  let job = ((await res.json()) as { job: UrlImportJob }).job;
+  for (let i = 0; job.status === "in_progress" && i < 40; i += 1) {
+    await sleep(1500);
+    const poll = await fetch(`${URL_IMPORTS_URL}/${job.id}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!poll.ok) {
+      throw new Error(
+        `URL import polling failed (${poll.status}): ${await poll.text()}`,
+      );
+    }
+    job = ((await poll.json()) as { job: UrlImportJob }).job;
+  }
+
+  const design = job.result?.designs?.[0];
+  if (job.status !== "success" || !design) {
+    throw new Error(
+      `URL import did not succeed: ${job.error?.message ?? job.status}`,
+    );
+  }
   return {
     designId: design.id,
     editUrl: design.urls.edit_url,

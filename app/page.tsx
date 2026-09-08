@@ -39,6 +39,13 @@ export default function Home() {
   const [canvaPushing, setCanvaPushing] = useState(false);
   const [canvaDesignUrl, setCanvaDesignUrl] = useState("");
   const [canvaFormat, setCanvaFormat] = useState("match");
+  const [canvaMode, setCanvaMode] = useState<"design" | "asset">("design");
+
+  const [importUrl, setImportUrl] = useState("");
+  const [importTitle, setImportTitle] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [importResultUrl, setImportResultUrl] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -71,6 +78,7 @@ export default function Home() {
       formData.append("image", blob, "retouched.jpg");
       formData.append("title", "Retouched portrait");
       formData.append("designType", canvaFormat);
+      formData.append("mode", canvaMode);
       const res = await fetch("/api/canva/push", {
         method: "POST",
         body: formData,
@@ -82,14 +90,49 @@ export default function Home() {
         }
         throw new Error(data.error ?? "Failed to send to Canva");
       }
-      setCanvaDesignUrl(data.editUrl);
-      setCanvaMessage("Design created in Canva.");
+      if (data.mode === "asset") {
+        setCanvaDesignUrl("");
+        setCanvaMessage(data.message ?? "Added to your Canva Uploads.");
+      } else {
+        setCanvaDesignUrl(data.editUrl);
+        setCanvaMessage("Design created in Canva.");
+      }
     } catch (err) {
       setCanvaMessage(
         err instanceof Error ? err.message : "Failed to send to Canva",
       );
     } finally {
       setCanvaPushing(false);
+    }
+  }
+
+  async function handleImport(event: React.FormEvent) {
+    event.preventDefault();
+    setImporting(true);
+    setImportMessage("");
+    setImportResultUrl("");
+    try {
+      const res = await fetch("/api/canva/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: importUrl,
+          title: importTitle || "Imported template",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          setCanvaConnected(false);
+        }
+        throw new Error(data.error ?? "Import failed");
+      }
+      setImportResultUrl(data.editUrl);
+      setImportMessage("Template imported into Canva.");
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -321,18 +364,33 @@ export default function Home() {
             )}
             {canvaConfigured && canvaConnected && (
               <div className="canva-send">
-                <label htmlFor="canvaFormat">Design format</label>
+                <label htmlFor="canvaMode">Action</label>
                 <select
-                  id="canvaFormat"
-                  value={canvaFormat}
-                  onChange={(e) => setCanvaFormat(e.target.value)}
+                  id="canvaMode"
+                  value={canvaMode}
+                  onChange={(e) =>
+                    setCanvaMode(e.target.value as "design" | "asset")
+                  }
                 >
-                  {CANVA_FORMATS.map((f) => (
-                    <option key={f.key} value={f.key}>
-                      {f.label}
-                    </option>
-                  ))}
+                  <option value="design">Create new design</option>
+                  <option value="asset">Add to my Canva Uploads</option>
                 </select>
+                {canvaMode === "design" && (
+                  <>
+                    <label htmlFor="canvaFormat">Format</label>
+                    <select
+                      id="canvaFormat"
+                      value={canvaFormat}
+                      onChange={(e) => setCanvaFormat(e.target.value)}
+                    >
+                      {CANVA_FORMATS.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={sendToCanva}
@@ -340,7 +398,9 @@ export default function Home() {
                 >
                   {canvaPushing
                     ? "Sending to Canva…"
-                    : "Send retouched photo to Canva"}
+                    : canvaMode === "asset"
+                      ? "Add photo to Canva Uploads"
+                      : "Send retouched photo to Canva"}
                 </button>
               </div>
             )}
@@ -357,6 +417,70 @@ export default function Home() {
             {canvaMessage && <p className="notes">{canvaMessage}</p>}
           </div>
         )}
+      </section>
+
+      <section className="card" style={{ marginTop: 36 }}>
+        <h2 className="card-title">Import a template from Etsy or elsewhere</h2>
+        <p className="notes" style={{ marginBottom: 20 }}>
+          Bring in a template you own (e.g. an Etsy digital download) and edit it
+          in Canva. Paste a public link to the template <strong>file</strong> —
+          PDF, PPTX, DOCX, PNG, or JPG. After importing, open it in Canva to
+          modify it, then add your own photo: retouch it above and choose{" "}
+          <em>Add to my Canva Uploads</em> to drop it into the template.
+        </p>
+        {!canvaConfigured && (
+          <p className="notes">Canva is not configured on the server.</p>
+        )}
+        {canvaConfigured && !canvaConnected && (
+          <a className="button-link" href="/api/canva/connect">
+            Connect Canva
+          </a>
+        )}
+        {canvaConfigured && canvaConnected && (
+          <form className="form-grid" onSubmit={handleImport}>
+            <div>
+              <label htmlFor="importUrl">Template file URL</label>
+              <input
+                id="importUrl"
+                type="url"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="https://example.com/my-template.pdf"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="importTitle">Title (optional)</label>
+              <input
+                id="importTitle"
+                value={importTitle}
+                onChange={(e) => setImportTitle(e.target.value)}
+                placeholder="My template"
+              />
+            </div>
+            <button type="submit" disabled={importing}>
+              {importing ? "Importing…" : "Import template to Canva"}
+            </button>
+            {importResultUrl && (
+              <a
+                className="button-link"
+                href={importResultUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open imported template in Canva
+              </a>
+            )}
+            {importMessage && <p className="notes">{importMessage}</p>}
+          </form>
+        )}
+        <p className="notes" style={{ marginTop: 16, fontSize: "0.8rem" }}>
+          The file URL must be publicly accessible. If your Etsy download is a
+          Canva “Use this template” link, open it directly in Canva instead —
+          Canva copies it into your account, then use{" "}
+          <em>Add to my Canva Uploads</em> above to include your photo. Only
+          import templates you have the right to use.
+        </p>
       </section>
     </main>
   );
