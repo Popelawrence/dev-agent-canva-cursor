@@ -6,6 +6,14 @@ font pairings, layouts, and headlines. The suggestion engine runs fully offline
 (no external design API required), which keeps local development and testing
 self-contained.
 
+It also includes an **identity-preserving portrait retouch** tool: upload a
+photo and it softens skin texture and wrinkles while leaving the person's
+likeness intact. Only skin regions (detected via YCbCr chrominance) are
+smoothed with an edge-preserving median filter blended at an adjustable
+strength, so eyes, lips, hair, and facial structure are never altered. This is
+classical retouching (via [`sharp`](https://sharp.pixelplumbing.com/)), not
+generative re-synthesis, so it cannot drift the subject's identity.
+
 ## Tech stack
 
 - [Next.js 15](https://nextjs.org/) (App Router) + React 19 + TypeScript
@@ -55,6 +63,26 @@ Request body:
 
 `designType` must be one of: `instagram-post`, `presentation`, `poster`, `logo`, `story`.
 Returns an array of design suggestions.
+
+### `POST /api/retouch`
+
+Accepts `multipart/form-data` with:
+
+- `image` — the photo file to retouch
+- `strength` — smoothing strength from `0` (no change) to `1` (maximum)
+
+Returns JSON with base64 `original` and `retouched` data URLs plus `width`,
+`height`, `skinRatio` (fraction of pixels treated as skin), and the applied
+`strength`.
+
+## Canva integration
+
+The app's design concepts and retouched photos are designed to feed into Canva.
+Placing a photo into a real Canva design is done through the Canva MCP tools
+(`upload-asset-from-url` → `generate-design` / `perform-editing-operations`).
+Note that `upload-asset-from-url` requires a **public HTTPS URL**, so a deployed
+instance (or a provided public URL) is needed to push app-produced images into
+Canva; the retouch itself runs locally with no external dependencies.
 
 ## Cloud Agent environment
 

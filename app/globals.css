@@ -171,8 +171,54 @@ button:disabled {
   color: var(--muted);
 }
 
+.card-title {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+}
+
+input[type="file"] {
+  padding: 8px;
+  cursor: pointer;
+}
+
+input[type="range"] {
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.compare {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.compare figure {
+  margin: 0;
+}
+
+.compare img {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  display: block;
+}
+
+.compare figcaption {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (max-width: 640px) {
   .row {
+    grid-template-columns: 1fr;
+  }
+
+  .compare {
     grid-template-columns: 1fr;
   }
 }

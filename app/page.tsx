@@ -19,6 +19,19 @@ export default function Home() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [retouchStrength, setRetouchStrength] = useState(60);
+  const [retouch, setRetouch] = useState<{
+    original: string;
+    retouched: string;
+    skinRatio: number;
+    strength: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [retouchError, setRetouchError] = useState("");
+  const [retouchLoading, setRetouchLoading] = useState(false);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
@@ -39,6 +52,35 @@ export default function Home() {
       setSuggestions([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRetouch(event: React.FormEvent) {
+    event.preventDefault();
+    if (!photo) {
+      setRetouchError("Choose a photo first");
+      return;
+    }
+    setRetouchLoading(true);
+    setRetouchError("");
+    try {
+      const formData = new FormData();
+      formData.append("image", photo);
+      formData.append("strength", String(retouchStrength / 100));
+      const res = await fetch("/api/retouch", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Retouch failed");
+      }
+      setRetouch(data);
+    } catch (err) {
+      setRetouchError(err instanceof Error ? err.message : "Something went wrong");
+      setRetouch(null);
+    } finally {
+      setRetouchLoading(false);
     }
   }
 
@@ -131,6 +173,62 @@ export default function Home() {
           ))}
         </section>
       )}
+
+      <section className="card" style={{ marginTop: 36 }}>
+        <h2 className="card-title">Portrait retouch</h2>
+        <p className="notes" style={{ marginBottom: 20 }}>
+          Upload a portrait to smooth wrinkles and skin texture while preserving
+          the person&rsquo;s identity. Only skin regions are softened &mdash;
+          eyes, lips, hair, and facial structure are left untouched. Adjust the
+          strength and compare before and after.
+        </p>
+        <form className="form-grid" onSubmit={handleRetouch}>
+          <div>
+            <label htmlFor="photo">Photo</label>
+            <input
+              id="photo"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div>
+            <label htmlFor="strength">
+              Smoothing strength: {retouchStrength}%
+            </label>
+            <input
+              id="strength"
+              type="range"
+              min={0}
+              max={100}
+              value={retouchStrength}
+              onChange={(e) => setRetouchStrength(Number(e.target.value))}
+            />
+          </div>
+          <button type="submit" disabled={retouchLoading}>
+            {retouchLoading ? "Retouching…" : "Retouch photo"}
+          </button>
+          {retouchError && <p className="error">{retouchError}</p>}
+        </form>
+
+        {retouch && (
+          <div className="compare">
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={retouch.original} alt="Original portrait" />
+              <figcaption>Before</figcaption>
+            </figure>
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={retouch.retouched} alt="Retouched portrait" />
+              <figcaption>
+                After &middot; {Math.round(retouch.strength * 100)}% strength
+                &middot; {Math.round(retouch.skinRatio * 100)}% skin
+              </figcaption>
+            </figure>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
