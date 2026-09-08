@@ -82,7 +82,10 @@ editable Canva design using the [Canva Connect API](https://www.canva.dev/docs/c
 The flow:
 
 1. **Connect Canva** — OAuth 2.0 Authorization Code + PKCE (`/api/canva/connect` → Canva → `/api/canva/callback`).
-2. **Send to Canva** — `/api/canva/push` uploads the retouched image as an asset (`POST /v1/asset-uploads`, polled to completion) and creates a design from it (`POST /v1/designs`), returning an edit URL.
+2. **Pick a design format** — choose the target size (Match photo, Instagram post/story, Presentation, Poster, Facebook post; see `lib/canva-formats.ts`).
+3. **Send to Canva** — `/api/canva/push` uploads the retouched image as an asset (`POST /v1/asset-uploads`, polled to completion) and creates a design at the chosen size (`POST /v1/designs`), returning an edit URL.
+
+The retouched photo can also be downloaded directly from the app without Canva.
 
 Client code lives in `lib/canva.ts`; token storage (demo-grade, httpOnly cookies) in `lib/canva-session.ts`.
 

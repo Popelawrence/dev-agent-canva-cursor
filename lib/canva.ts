@@ -214,8 +214,28 @@ export async function uploadImageAsset(
 
 const MIN_DIM = 40;
 const MAX_DIM = 8000;
+const MAX_AREA = 25_000_000;
 const clampDim = (v: number) =>
   Math.min(MAX_DIM, Math.max(MIN_DIM, Math.round(v)));
+
+/**
+ * Fit dimensions within Canva's constraints: each side 40..8000px and total
+ * area <= 25,000,000px². Scales down proportionally if the area is too large.
+ */
+export function fitCanvaDimensions(
+  width: number,
+  height: number,
+): { width: number; height: number } {
+  let w = clampDim(width);
+  let h = clampDim(height);
+  const area = w * h;
+  if (area > MAX_AREA) {
+    const scale = Math.sqrt(MAX_AREA / area);
+    w = clampDim(Math.floor(w * scale));
+    h = clampDim(Math.floor(h * scale));
+  }
+  return { width: w, height: h };
+}
 
 /**
  * Create a custom-sized Canva design that contains the given image asset.
@@ -224,6 +244,7 @@ export async function createDesignFromAsset(
   accessToken: string,
   params: { assetId: string; width: number; height: number; title: string },
 ): Promise<CanvaDesign> {
+  const { width, height } = fitCanvaDimensions(params.width, params.height);
   const res = await fetch(DESIGNS_URL, {
     method: "POST",
     headers: {
@@ -234,8 +255,8 @@ export async function createDesignFromAsset(
       type: "type_and_asset",
       design_type: {
         type: "custom",
-        width: clampDim(params.width),
-        height: clampDim(params.height),
+        width,
+        height,
       },
       asset_id: params.assetId,
       title: params.title.slice(0, 255),

@@ -7,6 +7,7 @@ import {
   uploadImageAsset,
   type CanvaTokenSet,
 } from "@/lib/canva";
+import { resolveFormat } from "@/lib/canva-formats";
 import { readTokens, writeTokens } from "@/lib/canva-session";
 
 export const runtime = "nodejs";
@@ -80,6 +81,16 @@ export async function POST(request: NextRequest) {
       { error: "Unsupported or corrupt image file" },
       { status: 400 },
     );
+  }
+
+  // Resolve the requested design format/size (defaults to matching the photo).
+  const formatKey = typeof form.get("designType") === "string"
+    ? String(form.get("designType"))
+    : "match";
+  const format = resolveFormat(formatKey);
+  if (format && format.width && format.height) {
+    width = format.width;
+    height = format.height;
   }
 
   try {

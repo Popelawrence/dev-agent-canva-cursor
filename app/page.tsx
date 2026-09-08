@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DESIGN_TYPES, type DesignSuggestion } from "@/lib/suggestions";
+import { CANVA_FORMATS } from "@/lib/canva-formats";
 
 const TYPE_LABELS: Record<string, string> = {
   "instagram-post": "Instagram Post",
@@ -37,6 +38,7 @@ export default function Home() {
   const [canvaMessage, setCanvaMessage] = useState("");
   const [canvaPushing, setCanvaPushing] = useState(false);
   const [canvaDesignUrl, setCanvaDesignUrl] = useState("");
+  const [canvaFormat, setCanvaFormat] = useState("match");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -68,6 +70,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("image", blob, "retouched.jpg");
       formData.append("title", "Retouched portrait");
+      formData.append("designType", canvaFormat);
       const res = await fetch("/api/canva/push", {
         method: "POST",
         body: formData,
@@ -287,8 +290,22 @@ export default function Home() {
           </div>
         )}
 
+        {retouch && retouch.skinRatio < 0.05 && (
+          <p className="error" style={{ marginTop: 12 }}>
+            Little skin detected in this image — the retouch may have limited
+            effect. It works best on portraits where the face is clearly visible.
+          </p>
+        )}
+
         {retouch && (
           <div className="canva-actions">
+            <a
+              className="button-link"
+              href={retouch.retouched}
+              download="retouched.jpg"
+            >
+              Download retouched photo
+            </a>
             {!canvaConfigured && (
               <p className="notes">
                 Connect Canva to send this retouched photo into a real Canva
@@ -303,13 +320,29 @@ export default function Home() {
               </a>
             )}
             {canvaConfigured && canvaConnected && (
-              <button
-                type="button"
-                onClick={sendToCanva}
-                disabled={canvaPushing}
-              >
-                {canvaPushing ? "Sending to Canva…" : "Send retouched photo to Canva"}
-              </button>
+              <div className="canva-send">
+                <label htmlFor="canvaFormat">Design format</label>
+                <select
+                  id="canvaFormat"
+                  value={canvaFormat}
+                  onChange={(e) => setCanvaFormat(e.target.value)}
+                >
+                  {CANVA_FORMATS.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={sendToCanva}
+                  disabled={canvaPushing}
+                >
+                  {canvaPushing
+                    ? "Sending to Canva…"
+                    : "Send retouched photo to Canva"}
+                </button>
+              </div>
             )}
             {canvaDesignUrl && (
               <a
