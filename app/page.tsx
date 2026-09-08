@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DESIGN_TYPES, type DesignSuggestion } from "@/lib/suggestions";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -31,6 +31,64 @@ export default function Home() {
   } | null>(null);
   const [retouchError, setRetouchError] = useState("");
   const [retouchLoading, setRetouchLoading] = useState(false);
+
+  const [canvaConfigured, setCanvaConfigured] = useState(false);
+  const [canvaConnected, setCanvaConnected] = useState(false);
+  const [canvaMessage, setCanvaMessage] = useState("");
+  const [canvaPushing, setCanvaPushing] = useState(false);
+  const [canvaDesignUrl, setCanvaDesignUrl] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const canva = params.get("canva");
+    if (canva === "connected") {
+      setCanvaMessage("Connected to Canva.");
+    } else if (canva === "error") {
+      setCanvaMessage("Canva connection failed. Please try again.");
+    }
+    fetch("/api/canva/status")
+      .then((r) => r.json())
+      .then((d) => {
+        setCanvaConfigured(Boolean(d.configured));
+        setCanvaConnected(Boolean(d.connected));
+      })
+      .catch(() => {
+        setCanvaConfigured(false);
+        setCanvaConnected(false);
+      });
+  }, []);
+
+  async function sendToCanva() {
+    if (!retouch) return;
+    setCanvaPushing(true);
+    setCanvaMessage("");
+    setCanvaDesignUrl("");
+    try {
+      const blob = await (await fetch(retouch.retouched)).blob();
+      const formData = new FormData();
+      formData.append("image", blob, "retouched.jpg");
+      formData.append("title", "Retouched portrait");
+      const res = await fetch("/api/canva/push", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          setCanvaConnected(false);
+        }
+        throw new Error(data.error ?? "Failed to send to Canva");
+      }
+      setCanvaDesignUrl(data.editUrl);
+      setCanvaMessage("Design created in Canva.");
+    } catch (err) {
+      setCanvaMessage(
+        err instanceof Error ? err.message : "Failed to send to Canva",
+      );
+    } finally {
+      setCanvaPushing(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -226,6 +284,44 @@ export default function Home() {
                 &middot; {Math.round(retouch.skinRatio * 100)}% skin
               </figcaption>
             </figure>
+          </div>
+        )}
+
+        {retouch && (
+          <div className="canva-actions">
+            {!canvaConfigured && (
+              <p className="notes">
+                Connect Canva to send this retouched photo into a real Canva
+                design. Set <code>CANVA_CLIENT_ID</code>,{" "}
+                <code>CANVA_CLIENT_SECRET</code>, and{" "}
+                <code>CANVA_REDIRECT_URI</code> on the server to enable it.
+              </p>
+            )}
+            {canvaConfigured && !canvaConnected && (
+              <a className="button-link" href="/api/canva/connect">
+                Connect Canva
+              </a>
+            )}
+            {canvaConfigured && canvaConnected && (
+              <button
+                type="button"
+                onClick={sendToCanva}
+                disabled={canvaPushing}
+              >
+                {canvaPushing ? "Sending to Canva…" : "Send retouched photo to Canva"}
+              </button>
+            )}
+            {canvaDesignUrl && (
+              <a
+                className="button-link"
+                href={canvaDesignUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open design in Canva
+              </a>
+            )}
+            {canvaMessage && <p className="notes">{canvaMessage}</p>}
           </div>
         )}
       </section>

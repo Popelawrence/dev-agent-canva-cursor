@@ -75,14 +75,34 @@ Returns JSON with base64 `original` and `retouched` data URLs plus `width`,
 `height`, `skinRatio` (fraction of pixels treated as skin), and the applied
 `strength`.
 
-## Canva integration
+## Canva integration (Canva Connect API)
 
-The app's design concepts and retouched photos are designed to feed into Canva.
-Placing a photo into a real Canva design is done through the Canva MCP tools
-(`upload-asset-from-url` → `generate-design` / `perform-editing-operations`).
-Note that `upload-asset-from-url` requires a **public HTTPS URL**, so a deployed
-instance (or a provided public URL) is needed to push app-produced images into
-Canva; the retouch itself runs locally with no external dependencies.
+When configured, the app can send a retouched photo straight into a real,
+editable Canva design using the [Canva Connect API](https://www.canva.dev/docs/connect/).
+The flow:
+
+1. **Connect Canva** — OAuth 2.0 Authorization Code + PKCE (`/api/canva/connect` → Canva → `/api/canva/callback`).
+2. **Send to Canva** — `/api/canva/push` uploads the retouched image as an asset (`POST /v1/asset-uploads`, polled to completion) and creates a design from it (`POST /v1/designs`), returning an edit URL.
+
+Client code lives in `lib/canva.ts`; token storage (demo-grade, httpOnly cookies) in `lib/canva-session.ts`.
+
+### Setup
+
+1. Create an integration in the [Canva Developer Portal](https://www.canva.com/developers/): set a name, generate a client secret, and select scopes `asset:read asset:write design:content:write design:meta:read`.
+2. Add a redirect URL of the form `https://<your-deployment>/api/canva/callback` (must exactly match `CANVA_REDIRECT_URI`).
+3. Set `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET`, and `CANVA_REDIRECT_URI` (see `.env.example`).
+
+If these are unset, the app runs normally and the Canva actions are hidden.
+
+> Note: The agent-side Canva MCP tools (`upload-asset-from-url`, `generate-design`) can also place a photo into a design, but `upload-asset-from-url` requires a public HTTPS URL. The Connect API integration above is the runtime path for the app itself.
+
+## Deployment
+
+The app deploys on [Netlify](https://www.netlify.com/) (see `netlify.toml`; the
+Next.js runtime plugin is auto-installed). After the first deploy, set the
+`CANVA_*` environment variables in the site settings and register the deployed
+`/api/canva/callback` URL on your Canva integration. It also runs on any
+Next.js-compatible host (e.g. Vercel).
 
 ## Cloud Agent environment
 

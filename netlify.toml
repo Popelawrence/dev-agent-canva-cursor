@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Netlify auto-installs this plugin to run Next.js (App Router, API routes,
+# server rendering) on Netlify Functions.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
