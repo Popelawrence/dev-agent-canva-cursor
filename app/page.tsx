@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DESIGN_TYPES, type DesignSuggestion } from "@/lib/suggestions";
+import { CANVA_FORMATS } from "@/lib/canva-formats";
 
 const TYPE_LABELS: Record<string, string> = {
   "instagram-post": "Instagram Post",
@@ -37,6 +38,28 @@ export default function Home() {
   const [canvaMessage, setCanvaMessage] = useState("");
   const [canvaPushing, setCanvaPushing] = useState(false);
   const [canvaDesignUrl, setCanvaDesignUrl] = useState("");
+  const [canvaFormat, setCanvaFormat] = useState("match");
+  const [canvaMode, setCanvaMode] = useState<"design" | "asset">("design");
+
+  const [importUrl, setImportUrl] = useState("");
+  const [importTitle, setImportTitle] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [importResultUrl, setImportResultUrl] = useState("");
+
+  const [composeTemplate, setComposeTemplate] = useState<File | null>(null);
+  const [composePosition, setComposePosition] = useState("center");
+  const [composeScale, setComposeScale] = useState(50);
+  const [composing, setComposing] = useState(false);
+  const [composeError, setComposeError] = useState("");
+  const [composeResult, setComposeResult] = useState<{
+    composed: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeCanvaUrl, setComposeCanvaUrl] = useState("");
+  const [composeCanvaMessage, setComposeCanvaMessage] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -68,6 +91,8 @@ export default function Home() {
       const formData = new FormData();
       formData.append("image", blob, "retouched.jpg");
       formData.append("title", "Retouched portrait");
+      formData.append("designType", canvaFormat);
+      formData.append("mode", canvaMode);
       const res = await fetch("/api/canva/push", {
         method: "POST",
         body: formData,
@@ -79,14 +104,109 @@ export default function Home() {
         }
         throw new Error(data.error ?? "Failed to send to Canva");
       }
-      setCanvaDesignUrl(data.editUrl);
-      setCanvaMessage("Design created in Canva.");
+      if (data.mode === "asset") {
+        setCanvaDesignUrl("");
+        setCanvaMessage(data.message ?? "Added to your Canva Uploads.");
+      } else {
+        setCanvaDesignUrl(data.editUrl);
+        setCanvaMessage("Design created in Canva.");
+      }
     } catch (err) {
       setCanvaMessage(
         err instanceof Error ? err.message : "Failed to send to Canva",
       );
     } finally {
       setCanvaPushing(false);
+    }
+  }
+
+  async function handleCompose(event: React.FormEvent) {
+    event.preventDefault();
+    if (!retouch || !composeTemplate) return;
+    setComposing(true);
+    setComposeError("");
+    setComposeResult(null);
+    setComposeCanvaUrl("");
+    setComposeCanvaMessage("");
+    try {
+      const photoBlob = await (await fetch(retouch.retouched)).blob();
+      const formData = new FormData();
+      formData.append("template", composeTemplate);
+      formData.append("photo", photoBlob, "photo.jpg");
+      formData.append("position", composePosition);
+      formData.append("scalePercent", String(composeScale));
+      const res = await fetch("/api/compose", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Compose failed");
+      }
+      setComposeResult(data);
+    } catch (err) {
+      setComposeError(err instanceof Error ? err.message : "Compose failed");
+    } finally {
+      setComposing(false);
+    }
+  }
+
+  async function sendComposedToCanva() {
+    if (!composeResult) return;
+    setComposeSending(true);
+    setComposeCanvaMessage("");
+    setComposeCanvaUrl("");
+    try {
+      const blob = await (await fetch(composeResult.composed)).blob();
+      const formData = new FormData();
+      formData.append("image", blob, "composed.jpg");
+      formData.append("title", "Composed design");
+      formData.append("designType", "match");
+      formData.append("mode", "design");
+      const res = await fetch("/api/canva/push", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) setCanvaConnected(false);
+        throw new Error(data.error ?? "Failed to send to Canva");
+      }
+      setComposeCanvaUrl(data.editUrl ?? "");
+      setComposeCanvaMessage("Design created in Canva.");
+    } catch (err) {
+      setComposeCanvaMessage(
+        err instanceof Error ? err.message : "Failed to send to Canva",
+      );
+    } finally {
+      setComposeSending(false);
+    }
+  }
+
+  async function handleImport(event: React.FormEvent) {
+    event.preventDefault();
+    setImporting(true);
+    setImportMessage("");
+    setImportResultUrl("");
+    try {
+      const res = await fetch("/api/canva/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: importUrl,
+          title: importTitle || "Imported template",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          setCanvaConnected(false);
+        }
+        throw new Error(data.error ?? "Import failed");
+      }
+      setImportResultUrl(data.editUrl);
+      setImportMessage("Template imported into Canva.");
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -287,8 +407,22 @@ export default function Home() {
           </div>
         )}
 
+        {retouch && retouch.skinRatio < 0.05 && (
+          <p className="error" style={{ marginTop: 12 }}>
+            Little skin detected in this image — the retouch may have limited
+            effect. It works best on portraits where the face is clearly visible.
+          </p>
+        )}
+
         {retouch && (
           <div className="canva-actions">
+            <a
+              className="button-link"
+              href={retouch.retouched}
+              download="retouched.jpg"
+            >
+              Download retouched photo
+            </a>
             {!canvaConfigured && (
               <p className="notes">
                 Connect Canva to send this retouched photo into a real Canva
@@ -303,13 +437,46 @@ export default function Home() {
               </a>
             )}
             {canvaConfigured && canvaConnected && (
-              <button
-                type="button"
-                onClick={sendToCanva}
-                disabled={canvaPushing}
-              >
-                {canvaPushing ? "Sending to Canva…" : "Send retouched photo to Canva"}
-              </button>
+              <div className="canva-send">
+                <label htmlFor="canvaMode">Action</label>
+                <select
+                  id="canvaMode"
+                  value={canvaMode}
+                  onChange={(e) =>
+                    setCanvaMode(e.target.value as "design" | "asset")
+                  }
+                >
+                  <option value="design">Create new design</option>
+                  <option value="asset">Add to my Canva Uploads</option>
+                </select>
+                {canvaMode === "design" && (
+                  <>
+                    <label htmlFor="canvaFormat">Format</label>
+                    <select
+                      id="canvaFormat"
+                      value={canvaFormat}
+                      onChange={(e) => setCanvaFormat(e.target.value)}
+                    >
+                      {CANVA_FORMATS.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={sendToCanva}
+                  disabled={canvaPushing}
+                >
+                  {canvaPushing
+                    ? "Sending to Canva…"
+                    : canvaMode === "asset"
+                      ? "Add photo to Canva Uploads"
+                      : "Send retouched photo to Canva"}
+                </button>
+              </div>
             )}
             {canvaDesignUrl && (
               <a
@@ -323,6 +490,190 @@ export default function Home() {
             )}
             {canvaMessage && <p className="notes">{canvaMessage}</p>}
           </div>
+        )}
+      </section>
+
+      <section className="card" style={{ marginTop: 36 }}>
+        <h2 className="card-title">Import a template from Etsy or elsewhere</h2>
+        <p className="notes" style={{ marginBottom: 20 }}>
+          Bring in a template you own (e.g. an Etsy digital download) and edit it
+          in Canva. Paste a public link to the template <strong>file</strong> —
+          PDF, PPTX, DOCX, PNG, or JPG. After importing, open it in Canva to
+          modify it, then add your own photo: retouch it above and choose{" "}
+          <em>Add to my Canva Uploads</em> to drop it into the template.
+        </p>
+        {!canvaConfigured && (
+          <p className="notes">Canva is not configured on the server.</p>
+        )}
+        {canvaConfigured && !canvaConnected && (
+          <a className="button-link" href="/api/canva/connect">
+            Connect Canva
+          </a>
+        )}
+        {canvaConfigured && canvaConnected && (
+          <form className="form-grid" onSubmit={handleImport}>
+            <div>
+              <label htmlFor="importUrl">Template file URL</label>
+              <input
+                id="importUrl"
+                type="url"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="https://example.com/my-template.pdf"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="importTitle">Title (optional)</label>
+              <input
+                id="importTitle"
+                value={importTitle}
+                onChange={(e) => setImportTitle(e.target.value)}
+                placeholder="My template"
+              />
+            </div>
+            <button type="submit" disabled={importing}>
+              {importing ? "Importing…" : "Import template to Canva"}
+            </button>
+            {importResultUrl && (
+              <a
+                className="button-link"
+                href={importResultUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open imported template in Canva
+              </a>
+            )}
+            {importMessage && <p className="notes">{importMessage}</p>}
+          </form>
+        )}
+        <p className="notes" style={{ marginTop: 16, fontSize: "0.8rem" }}>
+          The file URL must be publicly accessible. If your Etsy download is a
+          Canva “Use this template” link, open it directly in Canva instead —
+          Canva copies it into your account, then use{" "}
+          <em>Add to my Canva Uploads</em> above to include your photo. Only
+          import templates you have the right to use.
+        </p>
+      </section>
+
+      <section className="card" style={{ marginTop: 36 }}>
+        <h2 className="card-title">Place your photo into a template</h2>
+        <p className="notes" style={{ marginBottom: 20 }}>
+          Automatically drop your retouched photo into a template image &mdash;
+          no manual dragging. Upload a template image, choose where the photo
+          goes and how large, then download the finished design or send it to
+          Canva. Retouch a photo above first; it&rsquo;s used as the placed
+          image.
+        </p>
+        <form className="form-grid" onSubmit={handleCompose}>
+          <div>
+            <label htmlFor="composeTemplate">Template image</label>
+            <input
+              id="composeTemplate"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setComposeTemplate(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="row">
+            <div>
+              <label htmlFor="composePosition">Position</label>
+              <select
+                id="composePosition"
+                value={composePosition}
+                onChange={(e) => setComposePosition(e.target.value)}
+              >
+                {[
+                  "center",
+                  "top",
+                  "bottom",
+                  "left",
+                  "right",
+                  "top-left",
+                  "top-right",
+                  "bottom-left",
+                  "bottom-right",
+                ].map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="composeScale">Photo size: {composeScale}%</label>
+              <input
+                id="composeScale"
+                type="range"
+                min={10}
+                max={100}
+                value={composeScale}
+                onChange={(e) => setComposeScale(Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={composing || !retouch || !composeTemplate}
+          >
+            {composing ? "Composing…" : "Place photo into template"}
+          </button>
+          {!retouch && (
+            <p className="notes">Retouch a photo above first to use it here.</p>
+          )}
+          {composeError && <p className="error">{composeError}</p>}
+        </form>
+
+        {composeResult && (
+          <>
+            <div
+              className="compare"
+              style={{ gridTemplateColumns: "1fr", marginTop: 24 }}
+            >
+              <figure>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={composeResult.composed} alt="Composed design" />
+                <figcaption>
+                  Composed design &middot; {composeResult.width}×
+                  {composeResult.height}px
+                </figcaption>
+              </figure>
+            </div>
+            <div className="canva-actions">
+              <a
+                className="button-link"
+                href={composeResult.composed}
+                download="composed-design.jpg"
+              >
+                Download composed design
+              </a>
+              {canvaConfigured && canvaConnected && (
+                <button
+                  type="button"
+                  onClick={sendComposedToCanva}
+                  disabled={composeSending}
+                >
+                  {composeSending
+                    ? "Sending to Canva…"
+                    : "Send composed design to Canva"}
+                </button>
+              )}
+              {composeCanvaUrl && (
+                <a
+                  className="button-link"
+                  href={composeCanvaUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in Canva
+                </a>
+              )}
+              {composeCanvaMessage && (
+                <p className="notes">{composeCanvaMessage}</p>
+              )}
+            </div>
+          </>
         )}
       </section>
     </main>

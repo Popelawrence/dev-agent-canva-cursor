@@ -23,6 +23,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing 'image' file" }, { status: 400 });
   }
 
+  const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: "Image is too large (max 15 MB)" },
+      { status: 413 },
+    );
+  }
+
   const strengthRaw = form.get("strength");
   const parsedStrength =
     typeof strengthRaw === "string" ? Number(strengthRaw) : 0.6;

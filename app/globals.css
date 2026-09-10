@@ -242,6 +242,22 @@ input[type="range"] {
   margin: 0;
 }
 
+.canva-send {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.canva-send label {
+  margin: 0;
+}
+
+.canva-send select {
+  width: auto;
+  min-width: 220px;
+}
+
 code {
   background: #0b1220;
   border: 1px solid var(--panel-border);

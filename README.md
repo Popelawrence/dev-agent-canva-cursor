@@ -82,7 +82,27 @@ editable Canva design using the [Canva Connect API](https://www.canva.dev/docs/c
 The flow:
 
 1. **Connect Canva** — OAuth 2.0 Authorization Code + PKCE (`/api/canva/connect` → Canva → `/api/canva/callback`).
-2. **Send to Canva** — `/api/canva/push` uploads the retouched image as an asset (`POST /v1/asset-uploads`, polled to completion) and creates a design from it (`POST /v1/designs`), returning an edit URL.
+2. **Pick a design format** — choose the target size (Match photo, Instagram post/story, Presentation, Poster, Facebook post; see `lib/canva-formats.ts`).
+3. **Send to Canva** — `/api/canva/push` uploads the retouched image as an asset (`POST /v1/asset-uploads`, polled to completion) and creates a design at the chosen size (`POST /v1/designs`), returning an edit URL.
+
+The retouched photo can also be downloaded directly from the app without Canva.
+
+### Import an existing template (Etsy or similar)
+
+Bring in a template you own — e.g. an Etsy digital download — and edit it in
+Canva, then add your own photo:
+
+- **Import a template** — `/api/canva/import` imports a public template **file**
+  URL (PDF, PPTX, DOCX, PNG, JPG) into your Canva as an editable design via the
+  Canva Connect [URL import API](https://www.canva.dev/docs/connect/api-reference/design-imports/create-url-import-job/) (`POST /v1/url-imports`, polled).
+- **Add your photo** — when sending a retouched photo, choose **Add to my Canva
+  Uploads** (`mode=asset` on `/api/canva/push`) so it lands in your Canva
+  Uploads, ready to drag into the imported template. (Or **Create new design**
+  to make a standalone design from the photo.)
+
+Notes: the file URL must be publicly accessible; Etsy "Use this template" Canva
+links should be opened directly in Canva (they copy into your account). Only
+import templates you have the right to use.
 
 Client code lives in `lib/canva.ts`; token storage (demo-grade, httpOnly cookies) in `lib/canva-session.ts`.
 

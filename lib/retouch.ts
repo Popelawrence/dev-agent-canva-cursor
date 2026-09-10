@@ -67,25 +67,33 @@ export async function retouchPortrait(
     .raw()
     .toBuffer();
 
-  const out = Buffer.alloc(orig.length);
+  // Build a hard skin mask, then feather it so the smoothing blends smoothly
+  // into surrounding areas instead of leaving speckled per-pixel edges.
+  const mask = Buffer.alloc(width * height);
   let skinCount = 0;
-
   for (let i = 0; i < width * height; i += 1) {
     const o = i * channels;
-    const r = orig[o];
-    const g = orig[o + 1];
-    const b = orig[o + 2];
-
-    if (isSkinPixel(r, g, b)) {
+    if (isSkinPixel(orig[o], orig[o + 1], orig[o + 2])) {
+      mask[i] = 255;
       skinCount += 1;
-      out[o] = Math.round(r + (smoothed[o] - r) * strength);
-      out[o + 1] = Math.round(g + (smoothed[o + 1] - g) * strength);
-      out[o + 2] = Math.round(b + (smoothed[o + 2] - b) * strength);
-    } else {
-      out[o] = r;
-      out[o + 1] = g;
-      out[o + 2] = b;
     }
+  }
+
+  const featherSigma = Math.max(1, Math.round(minDim / 300));
+  const feathered = await sharp(mask, {
+    raw: { width, height, channels: 1 },
+  })
+    .blur(featherSigma)
+    .raw()
+    .toBuffer();
+
+  const out = Buffer.alloc(orig.length);
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * channels;
+    const alpha = (feathered[i] / 255) * strength;
+    out[o] = Math.round(orig[o] + (smoothed[o] - orig[o]) * alpha);
+    out[o + 1] = Math.round(orig[o + 1] + (smoothed[o + 1] - orig[o + 1]) * alpha);
+    out[o + 2] = Math.round(orig[o + 2] + (smoothed[o + 2] - orig[o + 2]) * alpha);
   }
 
   const data = await sharp(out, { raw: { width, height, channels } })

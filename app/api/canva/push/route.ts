@@ -3,11 +3,10 @@ import sharp from "sharp";
 import {
   createDesignFromAsset,
   getCanvaConfig,
-  refreshAccessToken,
   uploadImageAsset,
-  type CanvaTokenSet,
 } from "@/lib/canva";
-import { readTokens, writeTokens } from "@/lib/canva-session";
+import { resolveFormat } from "@/lib/canva-formats";
+import { ensureAccessToken, writeTokens } from "@/lib/canva-session";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,29 +20,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const stored = readTokens(request);
-  let accessToken = stored.accessToken;
-  let refreshed: CanvaTokenSet | null = null;
-
-  const expired = !accessToken || Date.now() >= stored.expiresAt;
-  if (expired && stored.refreshToken) {
-    try {
-      refreshed = await refreshAccessToken(config, stored.refreshToken);
-      accessToken = refreshed.accessToken;
-    } catch {
-      return NextResponse.json(
-        { error: "Canva session expired — please reconnect" },
-        { status: 401 },
-      );
-    }
-  }
-
-  if (!accessToken) {
+  const auth = await ensureAccessToken(request, config);
+  if (!auth.accessToken) {
     return NextResponse.json(
-      { error: "Not connected to Canva" },
+      {
+        error:
+          auth.error === "expired"
+            ? "Canva session expired — please reconnect"
+            : "Not connected to Canva",
+      },
       { status: 401 },
     );
   }
+  const accessToken = auth.accessToken;
+  const refreshed = auth.refreshed;
 
   let form: FormData;
   try {
@@ -82,12 +72,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Resolve the requested design format/size (defaults to matching the photo).
+  const formatKey = typeof form.get("designType") === "string"
+    ? String(form.get("designType"))
+    : "match";
+  const format = resolveFormat(formatKey);
+  if (format && format.width && format.height) {
+    width = format.width;
+    height = format.height;
+  }
+
+  // "asset" mode uploads to the user's Canva Uploads (to drop into an imported
+  // template); "design" mode (default) creates a new design from the photo.
+  const mode = form.get("mode") === "asset" ? "asset" : "design";
+
   try {
     const assetId = await uploadImageAsset(
       accessToken,
       new Uint8Array(jpeg),
       title,
     );
+
+    if (mode === "asset") {
+      const res = NextResponse.json({
+        mode: "asset",
+        assetId,
+        message:
+          "Added to your Canva Uploads. Open your template in Canva and drag it in.",
+      });
+      if (refreshed) {
+        writeTokens(res, refreshed);
+      }
+      return res;
+    }
+
     const design = await createDesignFromAsset(accessToken, {
       assetId,
       width,
@@ -95,6 +113,7 @@ export async function POST(request: NextRequest) {
       title,
     });
     const res = NextResponse.json({
+      mode: "design",
       designId: design.designId,
       editUrl: design.editUrl,
       viewUrl: design.viewUrl,

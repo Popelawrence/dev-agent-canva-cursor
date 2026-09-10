@@ -1,5 +1,5 @@
 import type { NextRequest, NextResponse } from "next/server";
-import type { CanvaTokenSet } from "./canva";
+import { refreshAccessToken, type CanvaConfig, type CanvaTokenSet } from "./canva";
 
 /**
  * Demo-grade token storage in httpOnly cookies.
@@ -53,4 +53,39 @@ export function clearTokens(res: NextResponse): void {
   res.cookies.set(ACCESS, "", base);
   res.cookies.set(ACCESS_EXP, "", base);
   res.cookies.set(REFRESH, "", base);
+}
+
+export interface AccessTokenResult {
+  accessToken?: string;
+  /** Set when a refresh happened, so the caller can persist new cookies. */
+  refreshed: CanvaTokenSet | null;
+  error?: "expired" | "missing";
+}
+
+/**
+ * Resolve a usable access token for the request, refreshing with the refresh
+ * token when the stored access token is missing or expired. On refresh, the
+ * caller must call `writeTokens(res, result.refreshed)` on its response.
+ */
+export async function ensureAccessToken(
+  request: NextRequest,
+  config: CanvaConfig,
+): Promise<AccessTokenResult> {
+  const stored = readTokens(request);
+  let accessToken = stored.accessToken;
+  let refreshed: CanvaTokenSet | null = null;
+
+  const expired = !accessToken || Date.now() >= stored.expiresAt;
+  if (expired && stored.refreshToken) {
+    try {
+      refreshed = await refreshAccessToken(config, stored.refreshToken);
+      accessToken = refreshed.accessToken;
+    } catch {
+      return { refreshed: null, error: "expired" };
+    }
+  }
+  if (!accessToken) {
+    return { refreshed: null, error: "missing" };
+  }
+  return { accessToken, refreshed };
 }
