@@ -118,11 +118,35 @@ If these are unset, the app runs normally and the Canva actions are hidden.
 
 ## Deployment
 
-The app deploys on [Netlify](https://www.netlify.com/) (see `netlify.toml`; the
-Next.js runtime plugin is auto-installed). After the first deploy, set the
-`CANVA_*` environment variables in the site settings and register the deployed
-`/api/canva/callback` URL on your Canva integration. It also runs on any
-Next.js-compatible host (e.g. Vercel).
+The app deploys on [Vercel](https://vercel.com/). Next.js is auto-detected
+(install `npm install`, build `next build`); no `vercel.json` is required.
+
+### Import the GitHub repo (one-time)
+
+1. Open [vercel.com/new](https://vercel.com/new) and **Import Git Repository**.
+2. Authorize the Vercel GitHub App with access to
+   `Popelawrence/dev-agent-canva-cursor`.
+3. Leave the Next.js defaults. Production branch is `main`.
+4. Add Environment Variables for **Production** and **Preview**:
+   - `CANVA_CLIENT_ID`
+   - `CANVA_CLIENT_SECRET`
+   - `CANVA_REDIRECT_URI` — set after the first deploy (see below)
+5. Click **Deploy**.
+
+Every push to `main` deploys production. Pull requests get preview URLs.
+
+### Canva redirect after the first deploy
+
+1. Note the production domain (e.g. `https://<project>.vercel.app`).
+2. Set `CANVA_REDIRECT_URI` to
+   `https://<project>.vercel.app/api/canva/callback` and **Redeploy** so the
+   new value is picked up.
+3. In the [Canva Developer Portal](https://www.canva.com/developers/), add that
+   exact callback URL to the integration's Redirect URLs.
+
+Hobby plan note: `/api/canva/import` sets `maxDuration` to 60s. A slow import
+can time out on Hobby; Pro allows the full duration. Retouch and compose are
+fast and are unaffected.
 
 ## Cloud Agent environment
 
